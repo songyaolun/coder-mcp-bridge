@@ -311,8 +311,7 @@ class PiRuntime:
         if model.get("providerId") and model.get("modelId"):
             command += ["--provider", model["providerId"], "--model", model["modelId"]]
         if self.args.get("thoughtLevel"):
-            thought_level = "xhigh" if self.args["thoughtLevel"] == "max" else self.args["thoughtLevel"]
-            command += ["--thinking", thought_level]
+            command += ["--thinking", self.args["thoughtLevel"]]
         if self.args.get("toolAllowlist"):
             command += ["--tools", ",".join(self.args["toolAllowlist"])]
         if self.args.get("toolDenylist"):
@@ -378,6 +377,30 @@ class PiRuntime:
             self._abort_background(token, "interrupt")
         else:
             self.client.request("follow_up", {"message": prompt}, timeout=30)
+
+    def set_thinking(self, level):
+        """Switch the live session's thinking level via the native RPC.
+
+        Pi drops its RPC process when a run settles, so live adjustment only
+        works while the session is awake (active or freshly started run).
+        """
+        with self._control_lock:
+            client = self.client
+        if not client:
+            raise ProtocolError(
+                "Pi session is hibernated; pass thoughtLevel to the next agent-start with threadId",
+                code=-32029,
+            )
+        client.request("set_thinking_level", {"level": level}, timeout=15)
+        try:
+            self.state = client.request("get_state", timeout=15)
+        except ProtocolError:
+            self.state = {}
+        self.emit({
+            "type": "model.thought-level-changed",
+            "thoughtLevel": (self.state or {}).get("thinkingLevel") or level,
+            "model": self._model_projection(self.state or {}),
+        })
 
     def cancel(self):
         if not self.client:
@@ -544,6 +567,11 @@ class PiRuntime:
                     "model": self._assistant_model(message),
                     "usage": self._assistant_usage(message),
                 })
+        elif kind == "thinking_level_changed":
+            self.emit({
+                "type": "model.thought-level-changed",
+                "thoughtLevel": event.get("level"),
+            })
         elif kind == "tool_execution_start":
             self.emit({
                 "type": "tool.started",
@@ -689,7 +717,7 @@ class PiBackend:
         return {
             "prompt": True,
             "durableGoal": False,
-            "guidance": ["guide", "interrupt", "cancel"],
+            "guidance": ["guide", "interrupt", "cancel", "set-thinking"],
             "reasoningEvents": True,
             "usage": "exact",
             "branch": True,

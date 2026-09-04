@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 from pi_backend import PiRpcClient, PiRuntime
+from zcode_protocol import ProtocolError
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -143,7 +144,7 @@ class PiRpcTest(unittest.TestCase):
         self.assertIn("--extension", captured["command"])
         self.assertIn("/bridge/pi-policy.mjs", captured["command"])
         self.assertEqual(
-            "xhigh", captured["command"][captured["command"].index("--thinking") + 1]
+            "max", captured["command"][captured["command"].index("--thinking") + 1]
         )
         self.assertEqual(
             ["read", "grep"],
@@ -344,6 +345,67 @@ class PiRpcTest(unittest.TestCase):
         self.assertIn("/sessions/parent.jsonl", created[0].command)
         self.assertTrue(created[0].closed)
         self.assertIsNone(runtime.client)
+
+    def test_thinking_level_passes_through_the_full_ladder(self):
+        backend = type(
+            "Backend",
+            (),
+            {"binary": "/fake/pi", "session_dir": "/tmp",
+                 "policy_extension": "/bridge/pi-policy.mjs", "logger": lambda *_: None},
+        )()
+        for level in ("off", "minimal", "low", "medium", "high", "xhigh", "max"):
+            runtime = PiRuntime(backend, {"thoughtLevel": level}, lambda _e: None, lambda _m: None)
+            command = runtime._build_command("/tmp")
+            self.assertEqual(level, command[command.index("--thinking") + 1], level)
+
+    def test_set_thinking_switches_live_session_via_rpc(self):
+        emitted = []
+        requests = []
+
+        class FakeClient:
+            level = "medium"
+
+            def __init__(self, command, **kwargs):
+                pass
+
+            def start(self):
+                return None
+
+            def request(self, command, params=None, timeout=30):
+                requests.append((command, dict(params or {})))
+                if command == "set_thinking_level":
+                    self.level = params["level"]
+                    return {"ok": True}
+                if command == "get_state":
+                    return {
+                        "sessionId": "session-one",
+                        "model": {},
+                        "thinkingLevel": self.level,
+                    }
+                return {}
+
+            def close(self):
+                return None
+
+        backend = type(
+            "Backend",
+            (),
+            {"binary": "/fake/pi", "session_dir": "/tmp",
+                 "policy_extension": "/bridge/pi-policy.mjs", "logger": lambda *_: None},
+        )()
+        runtime = PiRuntime(backend, {"thoughtLevel": "medium"}, emitted.append, lambda _m: None)
+        with mock.patch("pi_backend.PiRpcClient", FakeClient):
+            runtime.start("hello")
+            runtime.set_thinking("xhigh")
+
+        self.assertIn(("set_thinking_level", {"level": "xhigh"}), requests)
+        change = [event for event in emitted if event["type"] == "model.thought-level-changed"]
+        self.assertEqual(1, len(change))
+        self.assertEqual("xhigh", change[0]["thoughtLevel"])
+
+        runtime._hibernate()
+        with self.assertRaises(ProtocolError):
+            runtime.set_thinking("low")
 
 
 if __name__ == "__main__":

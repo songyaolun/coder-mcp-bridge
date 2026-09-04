@@ -141,6 +141,19 @@ class FakeProtocol:
                 if action == "set":
                     result["startedTurn"] = True
                 return result
+            if method == "session/setThoughtLevel":
+                snapshot = self._snapshot(params["sessionId"])
+                snapshot["settings"] = {"thoughtLevel": {
+                    "current": params["thoughtLevel"],
+                    "available": [
+                        {"label": "low", "value": "low"},
+                        {"label": "high", "value": "high"},
+                        {"label": "max", "value": "max"},
+                    ],
+                    "defaultLevel": "max",
+                    "enabled": True,
+                }}
+                return snapshot
             if method == "session/fork":
                 return {
                     "forkedSessionId": "sess_forked", "parentSessionId": params["sessionId"],
@@ -289,6 +302,39 @@ class ControlPlaneTest(unittest.TestCase):
         self.assertEqual(sent["inputId"], sent["queryId"])
         self.assertTrue(sent["inputId"].startswith("input_"))
         self.assertNotIn("apiKey", json.dumps(self.control.snapshot(run["runId"])))
+
+    def test_start_accepts_full_thought_level_ladder_and_provider_variants(self):
+        for level in ("off", "minimal", "low", "medium", "high", "xhigh", "max", "enabled"):
+            run = self.start("ladder", level, thoughtLevel=level)
+            self.assertTrue(self.session(run["runId"]), level)
+            self.finish(run["runId"])
+        with self.assertRaises(ControlPlaneError):
+            self.control.start({"prompt": "junk", "cwd": "/tmp", "thoughtLevel": "NOT A LEVEL"})
+
+    def test_set_thinking_adjusts_live_session_level(self):
+        run = self.start("reason", "hard", mode="edit", thoughtLevel="low")
+        run_id = run["runId"]
+        session_id = self.session(run_id)
+
+        result = self.control.control(run_id, "set-thinking", thought_level="high")
+
+        called = self.protocol.methods("session/setThoughtLevel")
+        self.assertEqual(1, len(called))
+        self.assertEqual(session_id, called[0]["sessionId"])
+        self.assertEqual("high", called[0]["thoughtLevel"])
+        self.assertEqual("high", result["model"]["thoughtLevel"])
+        self.assertEqual(
+            {"action": "set-thinking", "thoughtLevel": "high"},
+            result["controlResult"],
+        )
+        snapshot = self.control.snapshot(run_id)
+        self.assertEqual("high", snapshot["model"]["thoughtLevel"])
+
+        with self.assertRaises(ControlPlaneError):
+            self.control.control(run_id, "set-thinking")
+        with self.assertRaises(ControlPlaneError):
+            self.control.control(run_id, "set-thinking", thought_level="HIGH!")
+        self.finish(run_id)
 
     def test_managed_build_resolves_headless_permissions_and_plan_approval(self):
         run = self.start("implement", "permissions", mode="build")

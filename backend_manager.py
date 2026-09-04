@@ -15,7 +15,7 @@ ZCODE_CAPABILITIES = {
     "durableGoal": True,
     "guidance": [
         "guide", "interrupt", "cancel", "cancel-background",
-        "pause-goal", "resume-goal",
+        "pause-goal", "resume-goal", "set-thinking",
     ],
     "reasoningEvents": True,
     "usage": "exact",

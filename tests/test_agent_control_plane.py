@@ -29,6 +29,7 @@ class FakeRuntime:
         self.disconnect = disconnect
         self.closed = False
         self.guidance = []
+        self.thinking_level = args.get("thoughtLevel")
         self.thread_id = args.get("threadId") or "session-%s" % len(backend.runtimes)
 
     def start(self, prompt):
@@ -55,6 +56,10 @@ class FakeRuntime:
 
     def guide(self, prompt, *, interrupt=False):
         self.guidance.append((prompt, interrupt))
+
+    def set_thinking(self, level):
+        self.thinking_level = level
+        self.emit({"type": "model.thought-level-changed", "thoughtLevel": level})
 
     def cancel(self):
         self.emit({"type": "settled", "status": "cancelled"})
@@ -188,6 +193,30 @@ class AgentControlPlaneTest(unittest.TestCase):
         self.assertEqual("failed", final["status"])
         self.assertFalse(final["resourceLease"]["acquired"])
         self.assertTrue(self.backend.runtimes[-1].closed)
+
+    def test_set_thinking_adjusts_idle_session_and_rejects_bad_levels(self):
+        run = self.control.start({
+            "prompt": "work", "cwd": self.temp.name, "timeout": 5,
+            "thoughtLevel": "medium",
+        })
+        final = self.terminal(run["runId"])
+        runtime = self.backend.runtimes[-1]
+
+        result = self.control.control(final["runId"], "set-thinking", thought_level="xhigh")
+
+        self.assertEqual("xhigh", runtime.thinking_level)
+        self.assertEqual("xhigh", result["model"]["thoughtLevel"])
+
+        with self.assertRaises(ControlPlaneError) as missing:
+            self.control.control(final["runId"], "set-thinking")
+        self.assertEqual("invalid_params", missing.exception.code)
+        with self.assertRaises(ControlPlaneError):
+            self.control.control(final["runId"], "set-thinking", thought_level="NOT A LEVEL")
+
+        self.control.close_run(final["runId"])
+        with self.assertRaises(ControlPlaneError) as closed:
+            self.control.control(final["runId"], "set-thinking", thought_level="low")
+        self.assertEqual("session_closed", closed.exception.code)
 
 
 if __name__ == "__main__":

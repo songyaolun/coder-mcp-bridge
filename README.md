@@ -186,7 +186,7 @@ python3 /absolute/path/to/coder-mcp-bridge/server.py
 | `agent-start` | 非阻塞启动运行并立即返回 `runId` |
 | `agent-wait` | 等待 revision 变化或终态；推荐的主进度通道 |
 | `agent-observe` | 读取有界事件、reasoning、工具、usage、context 和资源状态 |
-| `agent-control` | Guide、interrupt、cancel；ZCode 额外支持 goal/background 控制 |
+| `agent-control` | Guide、interrupt、cancel、set-thinking；ZCode 额外支持 goal/background 控制 |
 | `agent-recover` | 列出或接管当前后端的持久会话 |
 | `agent-branch` | 从消息、turn 或 checkpoint 创建分支，粒度取决于后端 |
 | `agent-context` | 检查或压缩上下文 |
@@ -202,6 +202,26 @@ python3 /absolute/path/to/coder-mcp-bridge/server.py
 ```
 
 后端配置在一个 MCP 连接内设置一次。`agent-start` 不接受 backend 参数；切换后端只影响未来运行，现有 `runId` 始终绑定原后端。
+
+### 思考强度（thoughtLevel）
+
+`agent-start` 的 `thoughtLevel` 接受归一化档位 `off / minimal / low / medium / high / xhigh / max`，也接受 provider 原生变体（如 ZCode 某些模型的 `enabled`）。各后端映射到自身原生机制：
+
+- **Pi**：全部 7 档直传 `--thinking`。
+- **ZCode**：按所选 provider 的 reasoning variants 校验（如 GLM 为 `low / high / max`，非法值会被 app-server 拒绝），启动时随 `session/create` 传入。
+- **OpenCode**：作为每条消息的 model `variant` 传入。
+
+`agent-control` 的 `set-thinking` 动作可在会话存活期间调整档位：
+
+```json
+{"name":"agent-control","arguments":{"runId":"run_...","action":"set-thinking","thoughtLevel":"high"}}
+```
+
+- **ZCode**：空闲会话立即生效（`session/setThoughtLevel`），下一轮使用新档位；运行中的 turn 亦可调用。
+- **Pi**：turn 进行中通过原生 RPC 热切换；run 结束后 Pi 会休眠，此时返回明确错误——请把 `thoughtLevel` 传给下一次带 `threadId` 的 `agent-start`。
+- **OpenCode**：更新会话变体，对下一条消息（含 guide）生效。
+
+档位变化会以 `model.thought-level-changed` 事件出现在 `agent-observe` 事件流中，当前档位始终反映在 `model.thoughtLevel`。
 
 ## 并发与资源
 

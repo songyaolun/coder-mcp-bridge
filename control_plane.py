@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import deque
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -21,6 +22,26 @@ from zcode_protocol import (
 TERMINAL_STATES = {"completed", "failed", "cancelled", "timed_out", "closed"}
 MAX_EVENT_TEXT = 600
 MAX_STORED_RESULT = 12000
+
+# Normalized reasoning ladder understood by every backend. Backends map these
+# onto their native mechanisms: Pi accepts all of them verbatim, ZCode validates
+# against the selected provider's reasoning variants (e.g. low/high/max), and
+# OpenCode forwards the value as the per-message model variant. Provider-native
+# variant tokens outside this ladder are also accepted.
+THOUGHT_LEVEL_LADDER = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
+_THOUGHT_LEVEL_PATTERN = re.compile(r"[a-z0-9._-]{1,24}")
+
+
+def validate_thought_level(value):
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _THOUGHT_LEVEL_PATTERN.fullmatch(value):
+        raise ControlPlaneError(
+            "thoughtLevel must be a short lowercase token (ladder: %s, or a provider-native variant)"
+            % "/".join(THOUGHT_LEVEL_LADDER),
+            "invalid_params",
+        )
+    return value
 
 
 class ControlPlaneError(RuntimeError):
@@ -573,7 +594,7 @@ class ZCodeControlPlane:
             return result
 
     def control(self, run_id, action, *, prompt=None, task_id=None,
-                if_revision=None, if_status=None):
+                if_revision=None, if_status=None, thought_level=None):
         if action == "guide":
             return self._guide(
                 run_id, prompt, interrupt=False,
@@ -592,6 +613,30 @@ class ZCodeControlPlane:
             revision = run.native_revision
         if not session_id:
             raise ControlPlaneError("run has no ZCode session yet", "session_not_ready")
+        if action == "set-thinking":
+            level = validate_thought_level(thought_level)
+            if not level:
+                raise ControlPlaneError("thoughtLevel is required for set-thinking", "invalid_params")
+            native = self._protocol.request(
+                "session/setThoughtLevel",
+                {"sessionId": session_id, "thoughtLevel": level},
+                timeout=15,
+            )
+            snapshot = None
+            if isinstance(native, dict):
+                snapshot = native.get("snapshot") or native
+            with self._cv:
+                run = self._get(run_id)
+                if snapshot:
+                    self._apply_snapshot(run, snapshot)
+                run.thought_level = level
+                if isinstance(run.runtime_model, dict):
+                    run.runtime_model["thoughtLevel"] = level
+                run.model_state["thoughtLevel"] = level
+                self._event(run, "model.thought-level-changed", {"thoughtLevel": level})
+            result = self.snapshot(run_id, result_chars=0)
+            result["controlResult"] = {"action": action, "thoughtLevel": level}
+            return result
         if action == "cancel-background":
             if not isinstance(task_id, str) or not task_id:
                 raise ControlPlaneError("taskId is required", "invalid_params")
@@ -848,8 +893,8 @@ class ZCodeControlPlane:
                 "native durable goals do not execute in plan mode; use build, edit, yolo, auto, or omit mode",
                 "invalid_params",
             )
-        if args.get("thoughtLevel") not in {None, "high", "max"}:
-            raise ControlPlaneError("thoughtLevel must be high or max", "invalid_params")
+        if args.get("thoughtLevel") is not None:
+            validate_thought_level(args.get("thoughtLevel"))
         _normalize_resources(
             args.get("cwd") or os.getcwd(),
             args.get("workspaceAccess", "exclusive"),

@@ -221,7 +221,15 @@ ZCODE_START_SCHEMA = {
             "enum": ["build", "edit", "plan", "yolo", "auto"],
             "description": "Execution mode. Managed non-plan runs resolve headless tool and implementation-plan permissions inside declared structured path roots; arbitrary user questions are declined. Native durable goals cannot use plan.",
         },
-        "thoughtLevel": {"type": "string", "enum": ["high", "max"]},
+        "thoughtLevel": {
+            "type": "string",
+            "pattern": "^[a-z0-9._-]{1,24}$",
+            "description": (
+                "Reasoning level at start: the normalized ladder "
+                "off/minimal/low/medium/high/xhigh/max, or a provider-native variant token "
+                "(ZCode validates against the selected provider's variants, e.g. low/high/max)."
+            ),
+        },
         "model": {
             "type": "object",
             "properties": {"providerId": {"type": "string"}, "modelId": {"type": "string"}},
@@ -303,10 +311,21 @@ ZCODE_CONTROL_SCHEMA = {
         "runId": {"type": "string"},
         "action": {
             "type": "string",
-            "enum": ["guide", "interrupt", "cancel", "cancel-background", "pause-goal", "resume-goal"],
+            "enum": [
+                "guide", "interrupt", "cancel", "cancel-background",
+                "pause-goal", "resume-goal", "set-thinking",
+            ],
         },
         "prompt": {"type": "string", "description": "Required for guide or interrupt."},
         "taskId": {"type": "string", "description": "Required for cancel-background."},
+        "thoughtLevel": {
+            "type": "string",
+            "pattern": "^[a-z0-9._-]{1,24}$",
+            "description": (
+                "Required for set-thinking. Adjust the reasoning level of a live session: "
+                "off/minimal/low/medium/high/xhigh/max or a provider-native variant token."
+            ),
+        },
         "ifRevision": {
             "type": "integer",
             "minimum": 1,
@@ -500,7 +519,8 @@ class AgentMcpServer:
                 "title": "Control Agent Run",
                 "description": (
                     "Guide after the current turn, interrupt and guide, cancel a run or one native background "
-                    "task, and pause/resume a durable goal. Busy guidance retries after native readiness, and a "
+                    "task, pause/resume a durable goal, and set-thinking adjusts the live session's reasoning "
+                    "level. Busy guidance retries after native readiness, and a "
                     "control failure never overwrites an already successful turn. Optional ifRevision/ifStatus "
                     "guards reject stale decisions. For a terminal non-ZCode run, start again with threadId so "
                     "resource leases are reacquired."
@@ -618,6 +638,7 @@ class AgentMcpServer:
                 args.get("runId", ""), args.get("action", ""),
                 prompt=args.get("prompt"), task_id=args.get("taskId"),
                 if_revision=args.get("ifRevision"), if_status=args.get("ifStatus"),
+                thought_level=args.get("thoughtLevel"),
             )
         if name == "agent-recover":
             return control.recover(args)

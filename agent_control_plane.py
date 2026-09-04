@@ -13,7 +13,7 @@ import time
 import uuid
 from collections import deque
 
-from control_plane import ControlPlaneError
+from control_plane import ControlPlaneError, validate_thought_level
 from resource_leases import ResourceLeaseStore
 
 
@@ -195,7 +195,7 @@ class AdapterControlPlane:
             return result
 
     def control(self, run_id, action, *, prompt=None, task_id=None,
-                if_revision=None, if_status=None):
+                if_revision=None, if_status=None, thought_level=None):
         with self._lock:
             run = self._get(run_id)
             if if_revision is not None and run.revision != int(if_revision):
@@ -217,6 +217,20 @@ class AdapterControlPlane:
             with self._cv:
                 run = self._get(run_id)
                 self._event(run, "control.%s" % action, {})
+            return self.snapshot(run_id, result_chars=0)
+        if action == "set-thinking":
+            level = validate_thought_level(thought_level)
+            if not level:
+                raise ControlPlaneError("thoughtLevel is required for set-thinking", "invalid_params")
+            if run.status == "closed":
+                raise ControlPlaneError("session is closed", "session_closed")
+            if not runtime:
+                raise ControlPlaneError("run runtime is not ready", "session_not_ready")
+            runtime.set_thinking(level)
+            with self._cv:
+                run = self._get(run_id)
+                run.model["thoughtLevel"] = level
+                self._event(run, "control.set-thinking", {"thoughtLevel": level})
             return self.snapshot(run_id, result_chars=0)
         if action == "cancel":
             return self.cancel(run_id)

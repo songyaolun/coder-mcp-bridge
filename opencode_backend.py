@@ -241,6 +241,16 @@ class OpenCodeRuntime:
             self._request("POST", "/session/%s/abort" % quote(str(self.session_id), safe=""))
         self.emit({"type": "guidance.queued", "detail": {"interrupt": interrupt}})
 
+    def set_thinking(self, level):
+        # OpenCode carries the reasoning level as a per-message model variant,
+        # so the new level applies to the next prompt (start or guided follow-up).
+        self.args["thoughtLevel"] = level
+        self.emit({
+            "type": "model.thought-level-changed",
+            "thoughtLevel": level,
+            "detail": {"appliesTo": "next-message"},
+        })
+
     def cancel(self):
         self._cancelled = True
         self._request("POST", "/session/%s/abort" % quote(str(self.session_id), safe=""))
@@ -646,7 +656,7 @@ class OpenCodeBackend:
         return {
             "prompt": True,
             "durableGoal": False,
-            "guidance": ["guide", "interrupt", "cancel"],
+            "guidance": ["guide", "interrupt", "cancel", "set-thinking"],
             "reasoningEvents": True,
             "usage": "exact",
             "branch": True,

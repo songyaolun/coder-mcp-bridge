@@ -54,7 +54,8 @@ class McpContractTest(unittest.TestCase):
         self.assertIn("Cross-Bridge", start["properties"]["workspaceAccess"]["description"])
         actions = tools["agent-control"]["inputSchema"]["properties"]["action"]["enum"]
         self.assertEqual(
-            {"guide", "interrupt", "cancel", "cancel-background", "pause-goal", "resume-goal"},
+            {"guide", "interrupt", "cancel", "cancel-background", "pause-goal", "resume-goal",
+             "set-thinking"},
             set(actions),
         )
         controls = tools["agent-control"]["inputSchema"]["properties"]
