@@ -46,6 +46,9 @@ Coder MCP Bridge
 
 ## 支持的后端
 
+ZCode 内置账号套餐使用官方 Services Server 通道；配置、权限边界、能力差异及 E2E
+计划见 [内置账号通道](docs/zcode-account-services.md)。默认直连通道保持不变。
+
 | 能力 | ZCode | OpenCode | Pi |
 |---|:---:|:---:|:---:|
 | Prompt 运行 | ✓ | ✓ | ✓ |

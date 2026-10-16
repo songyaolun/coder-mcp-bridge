@@ -38,13 +38,18 @@ class ZCodeBackend:
         self.max_concurrency = max_concurrency
         self.logger = logger or (lambda _message: None)
         self.paths = None
+        self.capabilities = dict(ZCODE_CAPABILITIES)
+        if os.environ.get("ZCODE_PROTOCOL_TRANSPORT") == "services":
+            # The Services facade exposes V4 row forks, not the bridge's
+            # checkpoint/turn fork contract. Do not advertise a false mapping.
+            self.capabilities["branch"] = False
 
     def probe(self):
         try:
             self.paths = self.paths or self.discover()
             return {
                 "available": True,
-                "version": "desktop-bundled",
+                "version": "services-runtime" if os.environ.get("ZCODE_PROTOCOL_TRANSPORT") == "services" else "desktop-bundled",
                 "binary": self.paths[0],
             }
         except Exception as exc:  # noqa: BLE001

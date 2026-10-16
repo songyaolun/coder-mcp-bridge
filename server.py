@@ -79,6 +79,15 @@ def _first_existing(paths):
 
 def discover_zcode():
     """Locate the ZCode runtime and bundled CLI on macOS or Linux."""
+    if os.environ.get("ZCODE_PROTOCOL_TRANSPORT") == "services":
+        runtime = os.environ.get("ZCODE_SERVICES_RUNTIME", "")
+        node = os.environ.get("ZCODE_SERVICES_NODE", "")
+        bundle = os.path.join(runtime, "agent", "zcode.cjs")
+        server_entry = os.path.join(runtime, "server", "remote", "zcode-server.cjs")
+        if not all(os.path.isabs(path) and os.path.isfile(path)
+                   for path in (node, bundle, server_entry)):
+            raise RuntimeError("Set absolute ZCODE_SERVICES_NODE and ZCODE_SERVICES_RUNTIME to an installed integrated CLI")
+        return node, bundle
     app = os.environ.get("ZCODE_APP_PATH") or _first_existing([
         "/Applications/ZCode.app",
         os.path.expanduser("~/Applications/ZCode.app"),

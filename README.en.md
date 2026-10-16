@@ -46,6 +46,11 @@ A positive `AGENT_MCP_MAX_CONCURRENCY` sets an optional per-backend operator saf
 
 ## Supported Backends
 
+ZCode account plans use an opt-in official Services Server transport. See the
+[account transport guide and E2E plan](docs/zcode-account-services.md) for setup,
+permission boundaries, and the checkpoint-branching limitation. Direct transport
+remains the default.
+
 | Capability | ZCode | OpenCode | Pi |
 |---|:---:|:---:|:---:|
 | Prompt runs | ✓ | ✓ | ✓ |

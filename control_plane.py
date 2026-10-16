@@ -362,7 +362,8 @@ class ZCodeControlPlane:
         self._transport_recovering = False
         self._runtime_model_resolver = runtime_model_resolver or resolve_runtime_model
         if protocol is None:
-            factory = protocol_factory or ZCodeProtocolClient
+            from zcode_services_protocol import create_zcode_protocol
+            factory = protocol_factory or create_zcode_protocol
             protocol = factory(
                 zcode_bin, zcode_bundle,
                 on_notification=self._on_notification,
@@ -1070,6 +1071,8 @@ class ZCodeControlPlane:
     def _open_session(self, run):
         if run.thread_id:
             params = {"sessionId": run.thread_id}
+            if getattr(self._protocol, "requires_workspace_on_resume", False):
+                params["workspace"] = {"workspacePath": run.cwd, "workspaceKey": run.cwd}
             if run.runtime_model:
                 params["runtimeModel"] = run.runtime_model
             if run.thought_level:
