@@ -65,7 +65,7 @@ class FakeBackend:
 class BackendManagerTest(unittest.TestCase):
     def setUp(self):
         self.backends = {
-            name: FakeBackend(name) for name in ("zcode", "opencode", "pi")
+            name: FakeBackend(name) for name in ("zcode", "opencode", "pi", "dsh")
         }
         self.manager = BackendManager(
             lambda: ("zcode", "bundle"),
@@ -104,8 +104,24 @@ class BackendManagerTest(unittest.TestCase):
 
     def test_list_reports_capabilities_and_probe(self):
         listed = self.manager.configure({"action": "list"})
-        self.assertEqual({"zcode", "opencode", "pi"}, set(listed["availableBackends"]))
+        self.assertEqual({"zcode", "opencode", "pi", "dsh"}, set(listed["availableBackends"]))
         self.assertTrue(listed["availableBackends"]["pi"]["capabilities"]["prompt"])
+
+    def test_dsh_selection_keeps_previous_runs_on_their_backend(self):
+        previous = self.manager.start({"prompt": "one"})
+        self.manager.configure({"action": "set", "backend": "dsh"})
+        current = self.manager.start({"prompt": "two"})
+        self.assertEqual("dsh", current["backend"])
+        self.assertEqual("zcode", self.manager.wait(previous["runId"])["backend"])
+
+    def test_default_registry_and_mcp_schema_include_dsh(self):
+        from server import AGENT_CONFIG_SCHEMA
+        registry = BackendManager(lambda: ("zcode", "bundle"))
+        try:
+            self.assertIn("dsh", registry.backends)
+            self.assertIn("dsh", AGENT_CONFIG_SCHEMA["properties"]["backend"]["enum"])
+        finally:
+            registry.close()
 
 
 if __name__ == "__main__":

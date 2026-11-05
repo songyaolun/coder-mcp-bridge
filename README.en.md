@@ -2,9 +2,13 @@
 
 English | [简体中文](README.md)
 
-An event-driven, multi-agent scheduling bridge for Codex and other MCP clients. Coder MCP Bridge maps ZCode, OpenCode, and Pi onto one consistent set of `agent-*` tools, allowing an orchestrator to start, observe, guide, recover, and close coding-agent runs while preserving each backend's native sessions and reasoning capabilities.
+An event-driven, multi-agent scheduling bridge for Codex and other MCP clients. Coder MCP Bridge maps ZCode, OpenCode, Pi, and DeepSeek Harness (dsh) onto one consistent set of `agent-*` tools, allowing an orchestrator to start, observe, guide, recover, and close coding-agent runs while preserving each backend's native sessions and reasoning capabilities.
+
+DeepSeek Harness uses its native ACP v1 transport. Select it with `agent-config {"action":"set","backend":"dsh"}` after reconnecting the MCP server. Start, wait, guide/interrupt/cancel, model selection and persistent session resume are supported; branching, compaction and exact token accounting are not. See [DSH setup and permission boundaries](docs/dsh-backend.md).
 
 Current development version: `0.5.0-dev`.
+
+OpenCode now uses native ACP as its default transport and shares the JSON-RPC client with dsh. Policy-matched sessions share a peer; HTTP/SSE is retained only as explicitly imported legacy code, with no fallback. See [OpenCode ACP lifecycle, permissions and usage](docs/opencode-acp-backend.md).
 
 Naming: the project and plugin are named `coder-mcp-bridge`, the MCP server id is `vibe_bridge`, and all public tools use the `agent-*` prefix. The early `zcode` / `zcode-reply` tools are no longer exposed.
 
@@ -36,7 +40,7 @@ MCP Client / Orchestrator
         ▼
 Coder MCP Bridge
         ├── ZCode app-server
-        ├── OpenCode HTTP + SSE
+        ├── OpenCode ACP v1 (policy-matched shared peers)
         └── Pi JSONL RPC
 ```
 

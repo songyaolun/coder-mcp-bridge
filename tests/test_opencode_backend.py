@@ -6,7 +6,7 @@ import time
 import unittest
 from control_plane import ControlPlaneError
 
-from opencode_backend import OpenCodeRuntime
+from opencode_http_backend import OpenCodeRuntime
 
 
 def eventually(predicate, timeout=3):

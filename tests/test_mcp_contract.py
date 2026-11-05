@@ -41,7 +41,7 @@ class McpContractTest(unittest.TestCase):
         tools = {tool["name"]: tool for tool in tool_catalog()}
         config = tools["agent-config"]["inputSchema"]
         self.assertEqual({"get", "set", "reset", "list"}, set(config["properties"]["action"]["enum"]))
-        self.assertEqual({"zcode", "opencode", "pi"}, set(config["properties"]["backend"]["enum"]))
+        self.assertEqual({"zcode", "opencode", "pi", "dsh"}, set(config["properties"]["backend"]["enum"]))
         start = tools["agent-start"]["inputSchema"]
         self.assertEqual(["prompt"], start["oneOf"][0]["required"])
         self.assertEqual(["goal"], start["oneOf"][1]["required"])

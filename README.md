@@ -2,7 +2,7 @@
 
 [English](README.en.md) | 简体中文
 
-面向 Codex 等 MCP 客户端的事件驱动多编程代理调度桥。Coder MCP Bridge 将 ZCode、OpenCode 与 Pi 映射为一致的 `agent-*` 工具，使上层调度器可以统一启动、观察、引导、恢复和关闭代理任务，同时保留各后端的原生会话与推理能力。
+面向 Codex 等 MCP 客户端的事件驱动多编程代理调度桥。Coder MCP Bridge 将 ZCode、OpenCode、Pi 与 DeepSeek Harness（dsh）映射为一致的 `agent-*` 工具，使上层调度器可以统一启动、观察、引导、恢复和关闭代理任务，同时保留各后端的原生会话与推理能力。
 
 当前开发版本：`0.5.0-dev`。
 
@@ -19,7 +19,7 @@ Coder MCP Bridge 是规约驱动长程 Agent 开发中的执行控制面。完�
 
 ## 核心能力
 
-- **统一控制面**：一次配置后，通过相同 MCP 工具调度 ZCode、OpenCode 或 Pi。
+- **统一控制面**：一次配置后，通过相同 MCP 工具调度 ZCode、OpenCode、Pi 或 dsh。
 - **真实并发**：Bridge 默认不限制全局并发；MCP 调度器决定任务拆分和并发数。
 - **资源互斥**：跨进程 SQLite lease 协调 worktree、模拟器和构建目录等共享资源。
 - **事件驱动等待**：使用 revision 和最长 60 秒的事件等待替代固定时长轮询。
@@ -36,8 +36,9 @@ MCP Client / Orchestrator
         ▼
 Coder MCP Bridge
         ├── ZCode app-server
-        ├── OpenCode HTTP + SSE
-        └── Pi JSONL RPC
+        ├── OpenCode ACP v1（按权限策略共享peer）
+        ├── Pi JSONL RPC
+        └── DeepSeek Harness ACP v1
 ```
 
 上层 MCP 调度器（例如 Codex）负责全局并发数、任务颗粒度与交付边界。Bridge 不替代上层调度，而是确保独立任务可以并发、冲突资源被正确串行化，并把不同代理的事件转换为稳定的 MCP 状态。
@@ -46,23 +47,27 @@ Coder MCP Bridge
 
 ## 支持的后端
 
+**OpenCode 已切换原生 ACP**，与 dsh 共用传输层；支持多会话、恢复、完整会话分叉和压缩。权限、用量口径及迁移说明见 [OpenCode ACP 后端](docs/opencode-acp-backend.md)。
+
+新增 **DeepSeek Harness / dsh** 原生 ACP 后端：`agent-config {"action":"set","backend":"dsh"}`。支持启动、等待、文本/工具/上下文事件、引导/中断/取消和持久会话续接；分叉、压缩及精确 Token 用量不支持。详见 [dsh 使用与权限边界](docs/dsh-backend.md)。现有 MCP 连接需重新连接以加载适配层。
+
 ZCode 内置账号套餐使用官方 Services Server 通道；配置、权限边界、能力差异及 E2E
 计划见 [内置账号通道](docs/zcode-account-services.md)。默认直连通道保持不变。
 
-| 能力 | ZCode | OpenCode | Pi |
-|---|:---:|:---:|:---:|
-| Prompt 运行 | ✓ | ✓ | ✓ |
-| Durable goal | ✓ | — | — |
-| Reasoning / usage 事件 | ✓ | ✓ | ✓ |
-| Guide / interrupt / cancel | ✓ | ✓ | ✓ |
-| 会话恢复 | ✓ | ✓ | ✓ |
-| Branch / compact | ✓ | ✓ | ✓ |
-| 后台任务投影 | ✓ | — | — |
-| Tool allowlist | ✓ | 明确拒绝 | ✓ |
-| Tool denylist | ✓ | ✓ | ✓ |
-| 权限通道 | Reverse request | HTTP event | 强制策略扩展 |
+| 能力 | ZCode | OpenCode ACP | Pi | dsh ACP |
+|---|:---:|:---:|:---:|:---:|
+| Prompt 运行 | ✓ | ✓ | ✓ | ✓ |
+| Durable goal | ✓ | — | — | — |
+| Reasoning / usage 事件 | ✓ | 根prompt用量 | ✓ | 仅上下文占用 |
+| Guide / interrupt / cancel | ✓ | ✓ | ✓ | ✓ |
+| 会话恢复 | ✓ | ✓ | ✓ | ✓ |
+| Branch / compact | ✓ | 最新会话分叉 / ✓ | ✓ | — |
+| 后台任务投影 | ✓ | — | — | — |
+| Tool allowlist | ✓ | 明确拒绝 | ✓ | 明确拒绝 |
+| Tool denylist | ✓ | 已核对action | ✓ | 明确拒绝 |
+| 权限通道 | Reverse request | ACP＋原生硬策略 | 强制策略扩展 | ACP＋原生profile |
 
-使用 `agent-config {"action":"list"}` 获取本机实际安装状态和精确能力。调用方不应假定三个后端的原生能力完全一致。
+使用 `agent-config {"action":"list"}` 获取本机实际安装状态和精确能力。调用方不应假定各后端的原生能力完全一致。
 
 ## 性能与费用基准
 

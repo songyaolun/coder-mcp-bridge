@@ -8,6 +8,7 @@ import threading
 from control_plane import ControlPlaneError, ZCodeControlPlane
 from opencode_backend import OpenCodeBackend
 from pi_backend import PiBackend
+from dsh_backend import DshBackend
 
 
 ZCODE_CAPABILITIES = {
@@ -81,6 +82,7 @@ class BackendManager:
                 ),
                 "opencode": OpenCodeBackend(logger=self.logger),
                 "pi": PiBackend(logger=self.logger),
+                "dsh": DshBackend(logger=self.logger),
             }
         self.backends = dict(backends)
         if self.default_backend not in self.backends:

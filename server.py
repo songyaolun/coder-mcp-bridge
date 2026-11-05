@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Event-driven ZCode/OpenCode/Pi scheduling bridge for MCP clients.
+"""Event-driven ZCode/OpenCode/Pi/DSH scheduling bridge for MCP clients.
 
 The bridge keeps each agent's native transport behind one compact run-state
 contract. The upstream MCP orchestrator owns global concurrency; the bridge
@@ -7,7 +7,7 @@ only serializes declared worktree and resource conflicts.
 
 Requirements
 ------------
-* At least one supported backend installed: ZCode, OpenCode or Pi.
+* At least one supported backend installed: ZCode, OpenCode, Pi or DeepSeek Harness.
 * Provider/model credentials configured in the selected backend itself.
 
 Usage
@@ -401,7 +401,7 @@ AGENT_CONFIG_SCHEMA = {
             "enum": ["get", "set", "reset", "list"],
             "default": "get",
         },
-        "backend": {"type": "string", "enum": ["zcode", "opencode", "pi"]},
+        "backend": {"type": "string", "enum": ["zcode", "opencode", "pi", "dsh"]},
     },
     "allOf": [{
         "if": {"properties": {"action": {"const": "set"}}, "required": ["action"]},
