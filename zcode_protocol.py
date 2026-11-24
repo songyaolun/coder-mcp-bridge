@@ -161,6 +161,15 @@ class ZCodeProtocolClient:
             env["ELECTRON_RUN_AS_NODE"] = "1"
             env["NO_COLOR"] = "1"
             env.pop("ZCODE_MODEL", None)
+            if account_module := env.get("ZCODE_ACCOUNT_PROVIDER_MODULE"):
+                script = """
+                    const entry = new URL(process.argv[1], "file:");
+                    const resolver = new URL("../backend/resolve.js", entry);
+                    const {builtinProviderEnv} = await import(resolver);
+                    process.stdout.write(JSON.stringify(builtinProviderEnv(process.argv[2])));
+                """
+                env.update(self._paseo_json(script, account_module, self.zcode_bundle, env=env))
+            self._agent_env = env
             popen_options = {}
             if os.name == "nt":
                 creation_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
@@ -183,8 +192,23 @@ class ZCodeProtocolClient:
             threading.Thread(target=self._read_stdout, daemon=True).start()
             threading.Thread(target=self._read_stderr, daemon=True).start()
 
+    def _paseo_json(self, script, *args, env):
+        output = subprocess.check_output(
+            [self.zcode_bin, "--input-type=module", "-e", script, *args],
+            env=env, timeout=30, text=True,
+        )
+        return json.loads(output)
+
     def request(self, method, params=None, timeout=30):
         self.start()
+        account_module = os.environ.get("ZCODE_ACCOUNT_PROVIDER_MODULE")
+        if method == "session/create" and account_module:
+            # Reuse Paseo's official-CLI account snapshot builder; no credential output.
+            script = ("const m = await import(process.argv[1]);"
+                      "process.stdout.write(JSON.stringify(m.buildAccountProviderConfig()));")
+            snapshot = self._paseo_json(script, account_module, env=self._agent_env)
+            if snapshot:
+                self.request("provider/updateAccountConfig", snapshot, timeout=15)
         with self._state_lock:
             self._next_id += 1
             request_id = "bridge-%s" % self._next_id
@@ -309,6 +333,30 @@ class ZCodeProtocolClient:
                 "id": request_id,
                 "result": {"nativeSearchEnhancementsEnabled": False},
             })
+            return
+        if method == "interaction/requestProviderRuntimeHeaders" and os.environ.get("ZCODE_ACCOUNT_PROVIDER_MODULE"):
+            params = message.get("params") or {}
+            script = """
+                const entry = new URL(process.argv[1], "file:");
+                const handler = new URL("../handlers/server-requests.js", entry);
+                const {answerProviderRuntimeHeaders} = await import(handler);
+                const result = await new Promise((resolve) => {
+                    answerProviderRuntimeHeaders(
+                        {sendReply: (_id, result) => resolve(result)},
+                        0, "interaction/requestProviderRuntimeHeaders", JSON.parse(process.argv[2]),
+                    );
+                });
+                process.stdout.write(JSON.stringify(result), () => process.exit(0));
+            """
+            try:
+                result = self._paseo_json(
+                    script, os.environ["ZCODE_ACCOUNT_PROVIDER_MODULE"], json.dumps(params),
+                    env=self._agent_env,
+                )
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                self.logger("Paseo runtime authentication failed: %s" % type(exc).__name__)
+                result = {"headersApplied": False, "errorMessage": "Paseo runtime authentication failed"}
+            self._send({"id": request_id, "result": result})
             return
         callback = self.on_server_request
         if callback is None:
